@@ -1,2 +1,2 @@
 Namespace,Project,Commit_Count,Branch_Count,Full_URL,github_org,github_repo,gh_repo_visibility,include_in_export,exclude_from_export
-migration-demo-group,Btop,1495,4,http://gitlabpoc.eastus.cloudapp.azure.com/migration-demo-group/btop,gl-mig-org,btop-test,public,commit_comments,
+migration-demo-group,music-player,76,2,http://gitlabpoc.eastus.cloudapp.azure.com/migration-demo-group/music-player,gl-mig-org,music-player-july-3,public,commit_comments,
