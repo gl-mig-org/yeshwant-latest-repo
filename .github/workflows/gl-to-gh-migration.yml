@@ -397,6 +397,7 @@ jobs:
           test -f ./runner.sh || { echo "[ERROR] runner.sh not found"; exit 1; }
           test -f ./config.sh || { echo "[ERROR] config.sh not found"; exit 1; }
           test -f ./gl-migration-readiness-check.sh || { echo "[ERROR] gl-migration-readiness-check.sh not found"; exit 1; }
+          test -f ./gl-gitsizer-readiness-check.sh || { echo "[ERROR] gl-gitsizer-readiness-check.sh not found"; exit 1; }
           test -f ./generate-gl-migration-archive.sh || { echo "[ERROR] generate-gl-migration-archive.sh not found"; exit 1; }
           test -f ./upload-gl-migration-archive.sh || { echo "[ERROR] upload-gl-migration-archive.sh not found"; exit 1; }
           test -f ./start-gl2gh-repo-migration.sh || { echo "[ERROR] start-gl2gh-repo-migration.sh not found"; exit 1; }
@@ -417,7 +418,73 @@ jobs:
           [[ -z "${INVENTORY_FILE:-}" ]] && echo "[ERROR] INVENTORY_FILE not set" && exit 1
           [[ ! -s "$INVENTORY_FILE" ]] && echo "[ERROR] Inventory file missing or empty" && exit 1
           printf '\n'
+          
+  # ------------------ GitSizer Repository Discovery ------------------
+  git-sizer-readiness-check:
+    name: git-sizer-readiness-check
+    runs-on: ["${{ inputs.RUNNER_LABEL }}"]
+    environment: ${{ inputs.ENVIRONMENT_NAME }}
 
+    env:
+      SOURCE_GL_SERVER_URL: ${{ vars.SOURCE_GL_SERVER_URL }}
+      GITLAB_USERNAME: ${{ vars.GITLAB_USERNAME }}
+      GITLAB_API_PRIVATE_TOKEN: ${{ secrets.GITLAB_API_PRIVATE_TOKEN }}
+      INVENTORY_FILE: ${{ inputs.INVENTORY_FILE }}
+      GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES: "419430400"
+
+    needs: [validate-prerequisites]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Cache node_modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: node_modules/
+          key: ${{ runner.os }}-node_modules-${{ hashFiles('package-lock.json', 'package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-
+
+      - name: GitSizer Repository Discovery
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "# GitSizer Repository Discovery Check"
+          echo "======================================"
+
+          set -euo pipefail
+
+          export SOURCE_GL_SERVER_URL="${SOURCE_GL_SERVER_URL:-}"
+          export GITLAB_USERNAME="${GITLAB_USERNAME:-}"
+          export GITLAB_API_PRIVATE_TOKEN="${GITLAB_API_PRIVATE_TOKEN:-}"
+          export INVENTORY_FILE="${INVENTORY_FILE:-}"
+
+          chmod +x ./gl-gitsizer-readiness-check.sh
+
+          ./gl-gitsizer-readiness-check.sh > gl-gitsizer-readiness-check.out 2>&1 || {
+            echo "[ERROR] GitSizer readiness check failed"
+            cat gl-gitsizer-readiness-check.out
+            exit 1
+          }
+
+          printf '\n'
+          echo "Output of gl-gitsizer-readiness-check.sh"
+          echo "----------------------------------------"
+          cat gl-gitsizer-readiness-check.out
+          printf '\n'
+
+      - name: Upload GitSizer Artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: git-sizer-readiness-check-artifacts
+          retention-days: 7
+          path: |
+            gl-gitsizer-readiness-check.out
+            output_files/git-sizer-readiness/
+            logs/git-sizer-readiness-check.log
+            
   # ------------------ 2) Pre-Migration Readiness Check ------------------
   pre-migration-readiness-check:
     name: pre-migration-readiness-check
@@ -437,7 +504,7 @@ jobs:
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    needs: [validate-prerequisites]
+    needs: [git-sizer-readiness-check]
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
