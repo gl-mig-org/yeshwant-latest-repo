@@ -557,13 +557,15 @@ run_checks() {
         "WARNING"
 
       {
-        echo "------------------------------------------------------------"
-        echo "Repository                        : $repo_name"
-        echo "Path                              : $project_path"
-        echo "Repo Size                         : ${repo_size_mb} MB"
-        echo "Largest File Size                 : ${largest_blob_mb} MB"
-        echo "Files > ${THRESHOLD_MB} MB found  : $large_file_count"
-        echo "------------------------------------------------------------"
+       echo "------------------------------------------------------------"
+
+       printf "%-35s : %s\n" "Repository" "$repo_name"
+       printf "%-35s : %s\n" "Path" "$project_path"
+       printf "%-35s : %s MB\n" "Repo Size" "$repo_size_mb"
+       printf "%-35s : %s MB\n" "Largest File Size" "$largest_blob_mb"
+       printf "%-35s : %s\n" "Files > ${THRESHOLD_MB} MB found" "$large_file_count"
+
+       echo "------------------------------------------------------------"
 
         while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
           [[ -z "${blob_sha:-}" ]] && continue
