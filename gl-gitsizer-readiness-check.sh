@@ -25,6 +25,7 @@ SUMMARY_CSV="$OUT_DIR/repo-size-summary.csv"
 LARGE_FILES_CSV="$OUT_DIR/large-files-above-${THRESHOLD_MB}mb.csv"
 FINAL_REPORT="$OUT_DIR/final-report.txt"
 CLEAN_CSV="$OUT_DIR/gitlab-stats.cleaned.csv"
+REPO_LIST_TSV="$OUT_DIR/repositories.tsv"
 
 mkdir -p "$OUT_DIR" \
          "$LOG_DIR" \
@@ -98,17 +99,22 @@ safe_name() {
 # Cleanup unwanted intermediate files
 # ------------------------------------------------------------
 cleanup_unwanted_outputs() {
-  rm -rf "$OUT_DIR/gitsizer-json" || true
-  rm -rf "$OUT_DIR/gitsizer-text" || true
 
-  rm -f "$REPO_LIST_TSV" || true
-  rm -f "$CLEAN_CSV" || true
-  rm -f "$OUT_DIR/warning-summary.txt" || true
-  rm -f "$OUT_DIR/clone-failures.txt" || true
+  echo "[INFO] Cleaning temporary files..."
+
+  rm -rf "$OUT_DIR/gitsizer-json" 2>/dev/null || true
+  rm -rf "$OUT_DIR/gitsizer-text" 2>/dev/null || true
+
+  rm -f "$CLEAN_CSV" 2>/dev/null || true
+  rm -f "$REPO_LIST_TSV" 2>/dev/null || true
+
+  rm -f "$OUT_DIR/warning-summary.txt" 2>/dev/null || true
+  rm -f "$OUT_DIR/clone-failures.txt" 2>/dev/null || true
 
   find "$OUT_DIR" -type f -name "*-large-files.tsv" -delete 2>/dev/null || true
-}
 
+  echo "[INFO] Temporary files cleaned."
+}
 # ------------------------------------------------------------
 # Install git-sizer if missing
 # ------------------------------------------------------------
