@@ -339,14 +339,14 @@ append_large_files() {
  branches="$(
   git for-each-ref --format='%(refname:short)' refs |
   while read -r branch; do
-    if git ls-tree -r "$branch" --name-only 2>/dev/null | grep -Fxq "$file_path"; then
+    if git rev-list "$branch" --objects 2>/dev/null | grep -q "^${blob_sha} "; then
       echo "$branch"
     fi
   done |
   sort -u |
   paste -sd "," -
  )" || true
-
+ 
   [[ -z "$branches" ]] && branches="<unknown>"
 
   printf "  [WARN] %8.2f MB  %s  (blob: %s)  [branches: %s]\n" \
