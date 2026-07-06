@@ -334,19 +334,33 @@ append_large_files() {
   local repo_url="$4"
 
   while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
-    [[ -z "${blob_sha:-}" ]] && continue
+  [[ -z "${blob_sha:-}" ]] && continue
 
-    csv_row \
-      "$repo_name" \
-      "$project_path" \
-      "$repo_url" \
-      "$blob_sha" \
-      "$blob_size_mb" \
-      "$file_path" \
-      "WARNING_LARGE_FILE" \
-      >> "$LARGE_FILES_CSV"
-  done < "$large_tsv"
-}
+  branches="$(
+    git for-each-ref --format='%(refname:short)' refs/heads |
+    while read -r branch; do
+      if git ls-tree -r "$branch" --name-only | grep -Fxq "$file_path"; then
+        echo "$branch"
+      fi
+    done | paste -sd "," -
+  )"
+
+  [[ -z "$branches" ]] && branches="<unknown>"
+
+  printf "  [WARN] %8.2f MB  %s  (blob: %s)  [branches: %s]\n" \
+    "$blob_size_mb" \
+    "$file_path" \
+    "$blob_sha" \
+    "$branches"
+
+  emit_github_warning \
+    "$repo_name" \
+    "$project_path" \
+    "$blob_size_mb" \
+    "$file_path" \
+    "$blob_sha"
+
+done < "$large_tsv"
 
 # ------------------------------------------------------------
 # GitHub Actions warning annotation
