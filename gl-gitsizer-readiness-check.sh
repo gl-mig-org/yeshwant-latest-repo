@@ -705,4 +705,4 @@ install_git_sizer
 create_repo_list
 write_headers
 run_checks
-cleanup_unwanted_outputsShow more lines
+cleanup_unwanted_outputs
