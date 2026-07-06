@@ -24,6 +24,7 @@ TOOLS_DIR=".tools"
 SUMMARY_CSV="$OUT_DIR/repo-size-summary.csv"
 LARGE_FILES_CSV="$OUT_DIR/large-files-above-${THRESHOLD_MB}mb.csv"
 FINAL_REPORT="$OUT_DIR/final-report.txt"
+CLEAN_CSV="$OUT_DIR/gitlab-stats.cleaned.csv"
 
 mkdir -p "$OUT_DIR" \
          "$LOG_DIR" \
