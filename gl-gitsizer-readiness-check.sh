@@ -339,12 +339,13 @@ append_large_files() {
  branches="$(
   git for-each-ref --format='%(refname:short)' refs |
   while read -r branch; do
-    git ls-tree -r "$branch" --name-only 2>/dev/null |
-      grep -Fxq "$file_path" && echo "$branch"
+    if git ls-tree -r "$branch" --name-only 2>/dev/null | grep -Fxq "$file_path"; then
+      echo "$branch"
+    fi
   done |
   sort -u |
   paste -sd "," -
- )"
+ )" || true
 
   [[ -z "$branches" ]] && branches="<unknown>"
 
