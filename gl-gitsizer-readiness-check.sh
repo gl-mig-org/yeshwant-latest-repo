@@ -39,7 +39,6 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 ROOT_DIR="$(pwd)"
 
 echo "[INFO] Inventory file       : $INVENTORY_FILE"
-echo "[INFO] Large file threshold : ${THRESHOLD_MB} MB"
 echo "[INFO] Output directory     : $OUT_DIR"
 echo "[INFO] Log file             : $LOG_FILE"
 
@@ -538,7 +537,6 @@ run_checks() {
     echo "Passed repositories              : $passed_repos"
     echo "Warning repos (> ${THRESHOLD_MB} MB files)   : $warning_repos"
     echo "Failed to clone                  : $failed_clone_repos"
-    echo "Threshold                        : ${THRESHOLD_MB} MB"
     echo "Summary CSV                      : $SUMMARY_CSV"
     echo "Large files CSV                  : $LARGE_FILES_CSV"
     echo "GitSizer JSON reports            : $OUT_DIR/gitsizer-json"
