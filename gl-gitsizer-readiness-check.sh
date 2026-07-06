@@ -336,14 +336,15 @@ append_large_files() {
   while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
   [[ -z "${blob_sha:-}" ]] && continue
 
-  branches="$(
-    git for-each-ref --format='%(refname:short)' refs/heads |
-    while read -r branch; do
-      if git ls-tree -r "$branch" --name-only | grep -Fxq "$file_path"; then
-        echo "$branch"
-      fi
-    done | paste -sd "," -
-  )"
+ branches="$(
+  git for-each-ref --format='%(refname:short)' refs |
+  while read -r branch; do
+    git ls-tree -r "$branch" --name-only 2>/dev/null |
+      grep -Fxq "$file_path" && echo "$branch"
+  done |
+  sort -u |
+  paste -sd "," -
+ )"
 
   [[ -z "$branches" ]] && branches="<unknown>"
 
