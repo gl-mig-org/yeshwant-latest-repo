@@ -336,17 +336,21 @@ append_large_files() {
   while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
   [[ -z "${blob_sha:-}" ]] && continue
 
- branches="$(
-  git for-each-ref --format='%(refname:short)' refs |
-  while read -r branch; do
-    if git rev-list "$branch" --objects 2>/dev/null | grep -q "^${blob_sha} "; then
-      echo "$branch"
-    fi
+branches="$(
+  git rev-list --all --objects |
+  awk -v sha="$blob_sha" '$1 == sha {print $2}' |
+  while read -r file; do
+
+      git log --all --format='%H' -- "$file" 2>/dev/null |
+      while read -r commit; do
+          git branch -a --contains "$commit" 2>/dev/null
+      done
+
   done |
+  sed 's/^[* ]*//' |
   sort -u |
   paste -sd "," -
- )" || true
- 
+)" 
   [[ -z "$branches" ]] && branches="<unknown>"
 
   printf "  [WARN] %8.2f MB  %s  (blob: %s)  [branches: %s]\n" \
