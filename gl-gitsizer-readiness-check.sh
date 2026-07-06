@@ -333,36 +333,15 @@ append_large_files() {
   local repo_name="$2"
   local project_path="$3"
   local repo_url="$4"
-  local repo_dir="$5"
 
   while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
 
     [[ -z "${blob_sha:-}" ]] && continue
 
-    branches="$(
-      git -C "$repo_dir" for-each-ref --format='%(refname:short)' refs/heads refs/remotes |
-      while read -r branch; do
-
-        git -C "$repo_dir" ls-tree -r "$branch" 2>/dev/null |
-        awk -v sha="$blob_sha" -v branch="$branch" '
-          $3 == sha {
-            print branch
-            found=1
-          }
-        '
-
-      done |
-      sort -u |
-      paste -sd "," -
-    )" || true
-
-    [[ -z "$branches" ]] && branches="<unknown>"
-
-    printf "  [WARN] %8.2f MB  %s  (blob: %s)  [branches: %s]\n" \
+    printf "  [WARN] %8.2f MB  %s  (blob: %s)\n" \
       "$blob_size_mb" \
       "$file_path" \
-      "$blob_sha" \
-      "$branches"
+      "$blob_sha"
 
     emit_github_warning \
       "$repo_name" \
@@ -555,13 +534,12 @@ run_checks() {
       echo "[WARNING] Repo '$repo_name' has $large_file_count blob/file(s) above ${THRESHOLD_MB} MB"
       echo "[WARNING] These files must be reviewed before migration since GitHub does not support files above ${THRESHOLD_MB} MB."
 
-      append_large_files \
-      "$large_tsv" \
-      "$repo_name" \
-      "$project_path" \
-      "$repo_url" \
-      "$repo_dir"
-
+     append_large_files \
+     "$large_tsv" \
+     "$repo_name" \
+     "$project_path" \
+     "$repo_url"
+     
       append_summary \
         "$repo_name" \
         "$project_path" \
