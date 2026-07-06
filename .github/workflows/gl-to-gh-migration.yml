@@ -418,8 +418,7 @@ jobs:
           [[ -z "${INVENTORY_FILE:-}" ]] && echo "[ERROR] INVENTORY_FILE not set" && exit 1
           [[ ! -s "$INVENTORY_FILE" ]] && echo "[ERROR] Inventory file missing or empty" && exit 1
           printf '\n'
-          
-  # ------------------ GitSizer Repository Discovery ------------------
+     # ------------------ GitSizer Repository Discovery ------------------
   git-sizer-readiness-check:
     name: git-sizer-readiness-check
     runs-on: ["${{ inputs.RUNNER_LABEL }}"]
@@ -459,6 +458,7 @@ jobs:
           export GITLAB_USERNAME="${GITLAB_USERNAME:-}"
           export GITLAB_API_PRIVATE_TOKEN="${GITLAB_API_PRIVATE_TOKEN:-}"
           export INVENTORY_FILE="${INVENTORY_FILE:-}"
+          export GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES="${GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES:-419430400}"
 
           chmod +x ./gl-gitsizer-readiness-check.sh
 
@@ -482,8 +482,11 @@ jobs:
           retention-days: 7
           path: |
             gl-gitsizer-readiness-check.out
-            output_files/git-sizer-readiness/
-            logs/git-sizer-readiness-check.log
+            output_files/git-sizer-readiness/final-report.txt
+            output_files/git-sizer-readiness/repo-size-summary.csv
+            output_files/git-sizer-readiness/large-files-above-400mb.csv
+            logs/git-sizer-readiness-check.log       
+   
             
   # ------------------ 2) Pre-Migration Readiness Check ------------------
   pre-migration-readiness-check:
