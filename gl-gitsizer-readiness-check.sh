@@ -23,11 +23,9 @@ TOOLS_DIR=".tools"
 
 SUMMARY_CSV="$OUT_DIR/repo-size-summary.csv"
 LARGE_FILES_CSV="$OUT_DIR/large-files-above-${THRESHOLD_MB}mb.csv"
-REPO_LIST_TSV="$OUT_DIR/repositories.tsv"
 FINAL_REPORT="$OUT_DIR/final-report.txt"
 
-mkdir -p "$OUT_DIR/gitsizer-json" \
-         "$OUT_DIR/gitsizer-text" \
+mkdir -p "$OUT_DIR" \
          "$LOG_DIR" \
          "$WORK_DIR" \
          "$TOOLS_DIR"
@@ -93,6 +91,21 @@ csv_row() {
 
 safe_name() {
   echo "$1" | sed 's#[^A-Za-z0-9._-]#_#g'
+}
+
+# ------------------------------------------------------------
+# Cleanup unwanted intermediate files
+# ------------------------------------------------------------
+cleanup_unwanted_outputs() {
+  rm -rf "$OUT_DIR/gitsizer-json" || true
+  rm -rf "$OUT_DIR/gitsizer-text" || true
+
+  rm -f "$REPO_LIST_TSV" || true
+  rm -f "$CLEAN_CSV" || true
+  rm -f "$OUT_DIR/warning-summary.txt" || true
+  rm -f "$OUT_DIR/clone-failures.txt" || true
+
+  find "$OUT_DIR" -type f -name "*-large-files.tsv" -delete 2>/dev/null || true
 }
 
 # ------------------------------------------------------------
@@ -175,15 +188,12 @@ install_git_sizer() {
 
 # ------------------------------------------------------------
 # Create repository list from gitlab-stats.csv
-# Header-independent: Extract URL by pattern (http:// or https://)
-# and derive Namespace/Project from the URL path itself.
+# Header-independent extraction:
+# Finds first http/https URL field and derives namespace/project from URL.
 # ------------------------------------------------------------
 create_repo_list() {
-
   echo "[INFO] Reading repositories from $INVENTORY_FILE"
 
-  # Strip BOM and CRLF
-  CLEAN_CSV="$OUT_DIR/gitlab-stats.cleaned.csv"
   sed '1s/^\xEF\xBB\xBF//' "$INVENTORY_FILE" | tr -d '\r' > "$CLEAN_CSV"
 
   echo
@@ -195,23 +205,17 @@ create_repo_list() {
   sed -n '2p' "$CLEAN_CSV"
   echo
 
-  # ------------------------------------------------------------
-  # Header-independent extraction:
-  # For each data row, find the first field starting with http:// or https://
-  # Then extract namespace/project from the URL path.
-  # ------------------------------------------------------------
   awk -F',' '
   function trim(s) {
     gsub(/^[ \t\r\n"]+|[ \t\r\n"]+$/, "", s)
     return s
   }
 
-  NR==1 { next }  # skip header entirely - we detect URL by pattern
+  NR==1 { next }
 
   {
       repo_url = ""
 
-      # Find the URL field by scanning all columns
       for (i = 1; i <= NF; i++) {
           v = trim($i)
 
@@ -226,15 +230,11 @@ create_repo_list() {
           next
       }
 
-      # Derive namespace/project from URL path
-      # Example: http://gitlabpoc.eastus.cloudapp.azure.com/migration-demo-group/btop
       path = repo_url
-      sub(/^https?:\/\/[^\/]+\//, "", path)   # strip scheme + host
-      sub(/\.git$/, "", path)                  # strip .git if present
-      sub(/\/$/, "", path)                     # strip trailing slash
+      sub(/^https?:\/\/[^\/]+\//, "", path)
+      sub(/\.git$/, "", path)
+      sub(/\/$/, "", path)
 
-      # namespace = everything before last "/"
-      # project   = last segment
       n = split(path, parts, "/")
 
       if (n < 2) {
@@ -264,7 +264,7 @@ create_repo_list() {
     exit 1
   }
 
-  echo "[INFO] Repository list generated: $REPO_LIST_TSV"
+  echo "[INFO] Repository list generated temporarily"
   echo "[INFO] Repository count: $(wc -l < "$REPO_LIST_TSV" | tr -d ' ')"
 
   echo
@@ -342,6 +342,47 @@ append_large_files() {
 }
 
 # ------------------------------------------------------------
+# GitHub Actions warning annotation
+# ------------------------------------------------------------
+emit_github_warning() {
+  local repo_name="$1"
+  local project_path="$2"
+  local blob_size_mb="$3"
+  local file_path="$4"
+  local blob_sha="$5"
+
+  echo "::warning title=Large file detected::Repository '$repo_name' has file '$file_path' of size ${blob_size_mb} MB above ${THRESHOLD_MB} MB threshold. Project path: $project_path. Blob SHA: $blob_sha"
+}
+
+# ------------------------------------------------------------
+# GitHub Actions step summary
+# ------------------------------------------------------------
+append_step_summary_header() {
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo "## GitSizer Repository Readiness Check"
+      echo
+      echo "| Repository | Project Path | Large Files | Largest Blob MB | Status |"
+      echo "|---|---|---:|---:|---|"
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+
+append_step_summary_row() {
+  local repo_name="$1"
+  local project_path="$2"
+  local large_file_count="$3"
+  local largest_blob_mb="$4"
+  local status="$5"
+
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo "| $repo_name | $project_path | $large_file_count | $largest_blob_mb | $status |"
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+
+# ------------------------------------------------------------
 # Git authentication for GitLab clone
 # ------------------------------------------------------------
 create_askpass() {
@@ -364,21 +405,23 @@ EOF
 
 # ------------------------------------------------------------
 # Run GitSizer discovery
-# Reports large files as WARNING; only clone failures fail the job.
+# Large files are reported as GitHub Actions warnings.
+# Clone failures are reported, but job only fails if all repos fail.
 # ------------------------------------------------------------
 run_checks() {
   local total_repos=0
   local failed_clone_repos=0
   local passed_repos=0
   local warning_repos=0
-  local clone_failure=0
 
   local warning_summary_file="$OUT_DIR/warning-summary.txt"
   local clone_failures_file="$OUT_DIR/clone-failures.txt"
+
   : > "$warning_summary_file"
   : > "$clone_failures_file"
 
   create_askpass
+  append_step_summary_header
 
   while IFS=$'\t' read -r repo_name repo_url project_path; do
     total_repos=$((total_repos + 1))
@@ -397,6 +440,7 @@ run_checks() {
 
     if ! git clone --mirror "$repo_url" "$repo_dir"; then
       echo "[WARNING] Failed to clone repository: $repo_url"
+      echo "::warning title=Git clone failed::Repository '$repo_name' could not be cloned. Project path: $project_path"
 
       append_summary \
         "$repo_name" \
@@ -407,9 +451,15 @@ run_checks() {
         "0" \
         "FAILED_CLONE"
 
+      append_step_summary_row \
+        "$repo_name" \
+        "$project_path" \
+        "0" \
+        "0" \
+        "FAILED_CLONE"
+
       echo "  - $repo_name  ($project_path)  URL: $repo_url" >> "$clone_failures_file"
 
-      clone_failure=1
       failed_clone_repos=$((failed_clone_repos + 1))
       continue
     fi
@@ -423,8 +473,7 @@ run_checks() {
 
     echo "[INFO] Running git-sizer for $repo_name"
 
-    git-sizer --json > "$ROOT_DIR/$OUT_DIR/gitsizer-json/${safe_repo_name}.json" 2>/dev/null || true
-    git-sizer > "$ROOT_DIR/$OUT_DIR/gitsizer-text/${safe_repo_name}.txt" 2>/dev/null || true
+    git-sizer >/dev/null 2>&1 || true
 
     echo "[INFO] Checking for blobs/files above ${THRESHOLD_MB} MB"
 
@@ -489,6 +538,13 @@ run_checks() {
         "$large_file_count" \
         "WARNING_LARGE_FILE_ABOVE_${THRESHOLD_MB}MB"
 
+      append_step_summary_row \
+        "$repo_name" \
+        "$project_path" \
+        "$large_file_count" \
+        "$largest_blob_mb" \
+        "WARNING"
+
       {
         echo "----------------------------------------"
         echo "Repository : $repo_name"
@@ -500,7 +556,16 @@ run_checks() {
 
         while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
           [[ -z "${blob_sha:-}" ]] && continue
+
           printf "  [WARN] %8.2f MB  %s  (blob: %s)\n" "$blob_size_mb" "$file_path" "$blob_sha"
+
+          emit_github_warning \
+            "$repo_name" \
+            "$project_path" \
+            "$blob_size_mb" \
+            "$file_path" \
+            "$blob_sha"
+
         done < "$large_tsv"
 
         echo
@@ -519,9 +584,17 @@ run_checks() {
         "$large_file_count" \
         "PASSED"
 
+      append_step_summary_row \
+        "$repo_name" \
+        "$project_path" \
+        "$large_file_count" \
+        "$largest_blob_mb" \
+        "PASSED"
+
       passed_repos=$((passed_repos + 1))
     fi
 
+    rm -f "$large_tsv" || true
     rm -rf "$repo_dir"
 
   done < "$REPO_LIST_TSV"
@@ -539,8 +612,6 @@ run_checks() {
     echo "Failed to clone                  : $failed_clone_repos"
     echo "Summary CSV                      : $SUMMARY_CSV"
     echo "Large files CSV                  : $LARGE_FILES_CSV"
-    echo "GitSizer JSON reports            : $OUT_DIR/gitsizer-json"
-    echo "GitSizer text reports            : $OUT_DIR/gitsizer-text"
     echo "=========================================="
 
     if [[ "$warning_repos" -gt 0 ]]; then
@@ -557,7 +628,7 @@ run_checks() {
     if [[ "$failed_clone_repos" -gt 0 ]]; then
       echo
       echo "=========================================="
-      echo "CLONE FAILURES (not fatal - reported only)"
+      echo "CLONE FAILURES - Reported Only"
       echo "=========================================="
       echo "The following repositories could not be cloned. Review them before migration:"
       echo
@@ -568,8 +639,35 @@ run_checks() {
   } | tee "$FINAL_REPORT"
 
   # ------------------------------------------------------------
-  # Exit strategy - discovery stage never blocks migration
-  # Only fail if ALL repos fail to clone (config/inventory issue)
+  # Add final summary to GitHub Actions Step Summary
+  # ------------------------------------------------------------
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo
+      echo "### Final Result"
+      echo
+      echo "- Total repositories checked: $total_repos"
+      echo "- Passed repositories: $passed_repos"
+      echo "- Warning repositories: $warning_repos"
+      echo "- Failed to clone: $failed_clone_repos"
+      echo
+      if [[ "$warning_repos" -gt 0 ]]; then
+        echo "> Warning: One or more repositories contain files above ${THRESHOLD_MB} MB. Review the large files CSV before migration."
+      else
+        echo "> No files above ${THRESHOLD_MB} MB were found."
+      fi
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+
+  # ------------------------------------------------------------
+  # Cleanup unwanted files before artifact upload
+  # ------------------------------------------------------------
+  cleanup_unwanted_outputs
+
+  # ------------------------------------------------------------
+  # Exit strategy
+  # Discovery stage never blocks migration for large file warnings.
+  # Only fail if ALL repos fail to clone.
   # ------------------------------------------------------------
   if [[ "$total_repos" -gt 0 && "$failed_clone_repos" -eq "$total_repos" ]]; then
     echo
