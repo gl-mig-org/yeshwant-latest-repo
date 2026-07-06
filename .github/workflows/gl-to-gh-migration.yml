@@ -60,7 +60,7 @@ jobs:
       GL_EXPORTER_REPO_URL: ${{ vars.GL_EXPORTER_REPO_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Cache node_modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -316,7 +316,7 @@ jobs:
     needs: [getting-env-ready]
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Cache node_modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -397,7 +397,6 @@ jobs:
           test -f ./runner.sh || { echo "[ERROR] runner.sh not found"; exit 1; }
           test -f ./config.sh || { echo "[ERROR] config.sh not found"; exit 1; }
           test -f ./gl-migration-readiness-check.sh || { echo "[ERROR] gl-migration-readiness-check.sh not found"; exit 1; }
-          test -f ./gl-gitsizer-readiness-check.sh || { echo "[ERROR] gl-gitsizer-readiness-check.sh not found"; exit 1; }
           test -f ./generate-gl-migration-archive.sh || { echo "[ERROR] generate-gl-migration-archive.sh not found"; exit 1; }
           test -f ./upload-gl-migration-archive.sh || { echo "[ERROR] upload-gl-migration-archive.sh not found"; exit 1; }
           test -f ./start-gl2gh-repo-migration.sh || { echo "[ERROR] start-gl2gh-repo-migration.sh not found"; exit 1; }
@@ -418,144 +417,187 @@ jobs:
           [[ -z "${INVENTORY_FILE:-}" ]] && echo "[ERROR] INVENTORY_FILE not set" && exit 1
           [[ ! -s "$INVENTORY_FILE" ]] && echo "[ERROR] Inventory file missing or empty" && exit 1
           printf '\n'
-     # ------------------ GitSizer Repository Discovery ------------------
-  git-sizer-readiness-check:
-    name: git-sizer-readiness-check
-    runs-on: ["${{ inputs.RUNNER_LABEL }}"]
-    environment: ${{ inputs.ENVIRONMENT_NAME }}
 
-    env:
-      SOURCE_GL_SERVER_URL: ${{ vars.SOURCE_GL_SERVER_URL }}
-      GITLAB_USERNAME: ${{ vars.GITLAB_USERNAME }}
-      GITLAB_API_PRIVATE_TOKEN: ${{ secrets.GITLAB_API_PRIVATE_TOKEN }}
-      INVENTORY_FILE: ${{ inputs.INVENTORY_FILE }}
-      GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES: "419430400"
-
-    needs: [validate-prerequisites]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - name: Cache node_modules
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: node_modules/
-          key: ${{ runner.os }}-node_modules-${{ hashFiles('package-lock.json', 'package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-
-
-      - name: GitSizer Repository Discovery
-        shell: bash
-        run: |
-          echo "======================================"
-          echo "# GitSizer Repository Discovery Check"
-          echo "======================================"
-
-          set -euo pipefail
-
-          export SOURCE_GL_SERVER_URL="${SOURCE_GL_SERVER_URL:-}"
-          export GITLAB_USERNAME="${GITLAB_USERNAME:-}"
-          export GITLAB_API_PRIVATE_TOKEN="${GITLAB_API_PRIVATE_TOKEN:-}"
-          export INVENTORY_FILE="${INVENTORY_FILE:-}"
-          export GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES="${GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES:-419430400}"
-
-          chmod +x ./gl-gitsizer-readiness-check.sh
-
-          ./gl-gitsizer-readiness-check.sh > gl-gitsizer-readiness-check.out 2>&1 || {
-            echo "[ERROR] GitSizer readiness check failed"
-            cat gl-gitsizer-readiness-check.out
-            exit 1
-          }
-
-          printf '\n'
-          echo "Output of gl-gitsizer-readiness-check.sh"
-          echo "----------------------------------------"
-          cat gl-gitsizer-readiness-check.out
-          printf '\n'
-
-      - name: Upload GitSizer Artifacts
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: git-sizer-readiness-check-artifacts
-          retention-days: 7
-          path: |
-            gl-gitsizer-readiness-check.out
-            output_files/git-sizer-readiness/final-report.txt
-            output_files/git-sizer-readiness/repo-size-summary.csv
-            output_files/git-sizer-readiness/large-files-above-400mb.csv
-            logs/git-sizer-readiness-check.log       
-   
-            
-  # ------------------ 2) Pre-Migration Readiness Check ------------------
+# --------------------------------------------------
+# Pre-Migration Readiness + GitSizer Check
+# --------------------------------------------------
   pre-migration-readiness-check:
     name: pre-migration-readiness-check
     runs-on: ["${{ inputs.RUNNER_LABEL }}"]
     environment: ${{ inputs.ENVIRONMENT_NAME }}
+  
     env:
       SOURCE_GL_SERVER_URL: ${{ vars.SOURCE_GL_SERVER_URL }}
       GITLAB_USERNAME: ${{ vars.GITLAB_USERNAME }}
+  
       GH_HOST: ${{ vars.GH_HOST }}
+  
       STORAGE_TYPE: ${{ vars.STORAGE_TYPE }}
+  
       AZ_CONTAINER: ${{ vars.AZ_CONTAINER }}
+  
       AWS_BUCKET_NAME: ${{ vars.AWS_BUCKET_NAME }}
       AWS_REGION: ${{ vars.AWS_REGION }}
+  
       GITLAB_API_PRIVATE_TOKEN: ${{ secrets.GITLAB_API_PRIVATE_TOKEN }}
+  
       GH_PAT: ${{ secrets.GH_PAT }}
       GH_TOKEN: ${{ secrets.GH_PAT }}
+  
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+  
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    needs: [git-sizer-readiness-check]
+  
+      INVENTORY_FILE: ${{ inputs.INVENTORY_FILE }}
+  
+      GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES: "419430400"
+  
+    needs:
+      - validate-prerequisites
+  
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+  
       - name: Cache node_modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: node_modules/
-          key: ${{ runner.os }}-node_modules-${{ hashFiles('package-lock.json', 'package.json') }}
+          key: ${{ runner.os }}-node_modules-${{ hashFiles('package-lock.json','package.json') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-
-
-      - name: pre-migration-readiness-check
+  
+      - name: Pre-Migration Readiness + GitSizer Check
         shell: bash
         run: |
-          echo "=================================="
-          echo "# 2) Pre-Migration Readiness Check"
-          echo "=================================="
+          echo "======================================="
+          echo "# Pre-Migration Readiness Check"
+          echo "======================================="
+  
           set -euo pipefail
-
+  
           export SOURCE_GL_SERVER_URL="${SOURCE_GL_SERVER_URL:-}"
           export GITLAB_USERNAME="${GITLAB_USERNAME:-}"
           export GITLAB_API_PRIVATE_TOKEN="${GITLAB_API_PRIVATE_TOKEN:-}"
-          export INVENTORY_FILE="${INVENTORY_FILE:-}"
+  
           export GH_PAT="${GH_PAT:-}"
           export GH_TOKEN="${GH_TOKEN:-}"
-          export GITHUB_TYPE="${GITHUB_TYPE:-}"
-
-          chmod +x ./gl-migration-readiness-check.sh ./config.sh
-          ./gl-migration-readiness-check.sh > gl-migration-readiness-check.out 2>&1 || {
-            echo "[ERROR] Readiness check failed"; cat gl-migration-readiness-check.out; exit 1;
-          }
-
-          printf '\n'
-          echo "Output of gl-migration-readiness-check.sh"
-          echo "----------------------------------------"
-          cat gl-migration-readiness-check.out
-          printf '\n'
-
-      - name: Upload artifacts
+  
+          export GH_HOST="${GH_HOST:-}"
+  
+          export STORAGE_TYPE="${STORAGE_TYPE:-}"
+  
+          export AZ_CONTAINER="${AZ_CONTAINER:-}"
+  
+          export AWS_BUCKET_NAME="${AWS_BUCKET_NAME:-}"
+          export AWS_REGION="${AWS_REGION:-}"
+  
+          export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
+          export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
+  
+          export AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING:-}"
+  
+          export INVENTORY_FILE="${INVENTORY_FILE:-}"
+  
+          export GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES="${GIT_SIZER_LARGE_FILE_THRESHOLD_BYTES:-419430400}"
+  
+          chmod +x ./config.sh
+          chmod +x ./gl-migration-readiness-check.sh
+          chmod +x ./gl-gitsizer-readiness-check.sh
+  
+          echo
+          echo "======================================="
+          echo "# 1. Migration Readiness Check"
+          echo "======================================="
+  
+          ./gl-migration-readiness-check.sh \
+            > gl-migration-readiness-check.out 2>&1 || {
+              echo "[ERROR] Migration readiness check failed"
+              cat gl-migration-readiness-check.out
+              exit 1
+            }
+  
+          echo
+          echo "======================================="
+          echo "# 2. GitSizer Repository Discovery"
+          echo "======================================="
+  
+          ./gl-gitsizer-readiness-check.sh \
+            > gl-gitsizer-readiness-check.out 2>&1 || {
+              echo "[ERROR] GitSizer readiness check failed"
+              cat gl-gitsizer-readiness-check.out
+              exit 1
+            }
+  
+          echo
+          echo "======================================="
+          echo "# Readiness Summary"
+          echo "======================================="
+  
+          echo
+          echo "Migration Readiness Output"
+          echo "--------------------------"
+          tail -50 gl-migration-readiness-check.out || true
+  
+          echo
+          echo "GitSizer Output"
+          echo "--------------------------"
+          tail -50 gl-gitsizer-readiness-check.out || true
+  
+          echo
+          echo "======================================="
+          echo "# Files To Review"
+          echo "======================================="
+  
+          echo
+          echo "Migration Readiness:"
+          echo "  gl-migration-readiness-check.out"
+  
+          echo
+          echo "GitSizer Summary:"
+          echo "  output_files/git-sizer-readiness/final-report.txt"
+  
+          echo
+          echo "Repository Metrics:"
+          echo "  output_files/git-sizer-readiness/repo-metrics.csv"
+  
+          echo
+          echo "Large Files (>400MB):"
+          echo "  output_files/git-sizer-readiness/large-files-above-400mb.csv"
+  
+          echo
+          echo "Per Repository Reports:"
+          echo "  output_files/git-sizer-readiness/per-repo-csv/"
+  
+          echo
+          echo "Per Repository Large Files:"
+          echo "  output_files/git-sizer-readiness/per-repo-large-files/"
+  
+          echo
+          echo "Logs:"
+          echo "  logs/"
+  
+      - name: Upload Readiness Artifacts
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pre-migration-readiness-check-artifacts
           retention-days: 7
           path: |
             gl-migration-readiness-check.out
+            gl-gitsizer-readiness-check.out
             logs/
-
+            output_files/git-sizer-readiness/final-report.txt
+            output_files/git-sizer-readiness/repo-size-summary.csv
+            output_files/git-sizer-readiness/repo-metrics.csv
+            output_files/git-sizer-readiness/large-files-above-*mb.csv
+            output_files/git-sizer-readiness/per-repo-csv/
+            output_files/git-sizer-readiness/per-repo-large-files/
+            output_files/git-sizer-readiness/gitsizer-json/
+            output_files/git-sizer-readiness/gitsizer-text/
+          
+ 
   # ------------------ Approve after Readiness Check ------------------
   approve-after-readiness-check:
     name: approve-after-readiness-check
@@ -576,12 +618,42 @@ jobs:
           echo "===================================="
           echo "MANUAL APPROVAL REQUIRED"
           echo "===================================="
+      
           echo
-          echo "Please review:"
-          echo " - gl-migration-readiness-check.out"
-          echo " - logs/migration_readiness_*.log"
+          echo "Review readiness results:"
+          echo "  - gl-migration-readiness-check.out"
+      
           echo
-          echo "If everything looks good, click 'Play' to continue."
+          echo "Review GitSizer summary:"
+          echo "  - output_files/git-sizer-readiness/final-report.txt"
+      
+          echo
+          echo "Review repository metrics:"
+          echo "  - output_files/git-sizer-readiness/repo-metrics.csv"
+      
+          echo
+          echo "IMPORTANT - Review files above 400 MB:"
+          echo "  - output_files/git-sizer-readiness/large-files-above-400mb.csv"
+      
+          echo
+          echo "Repository-specific reports:"
+          echo "  - output_files/git-sizer-readiness/per-repo-csv/"
+      
+          echo
+          echo "Repository-specific large files:"
+          echo "  - output_files/git-sizer-readiness/per-repo-large-files/"
+      
+          echo
+          echo "Logs:"
+          echo "  - logs/"
+      
+          echo
+          echo "Repos marked as:"
+          echo "  POTENTIAL_MIGRATION_FAILURE_FILE_ABOVE_400MB"
+          echo "must be reviewed before migration."
+      
+          echo
+          echo "Approve only after reviewing all readiness results."
 
   # ------------------ 3) Generate Migration Archives ------------------
   generate-migration-archives:
@@ -610,7 +682,7 @@ jobs:
       ARCHIVE_LIST_BASENAME: ${{ steps.capture.outputs.ARCHIVE_LIST_BASENAME }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Cache node_modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -733,7 +805,7 @@ jobs:
       UPLOADED_ARCHIVES_BASENAME: ${{ steps.capture.outputs.UPLOADED_ARCHIVES_BASENAME }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -849,7 +921,7 @@ jobs:
      MIGRATION_OUTPUT_FILE_BASENAME: ${{ steps.capture.outputs.MIGRATION_OUTPUT_FILE_BASENAME }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -962,7 +1034,7 @@ jobs:
     needs: [pre-migration-readiness-check, generate-migration-archives, upload-migration-archives, start-repository-migration]
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Download pre-migration artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -1155,7 +1227,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
   
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -1240,7 +1312,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Run Post Validation Script
         shell: bash
