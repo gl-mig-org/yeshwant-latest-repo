@@ -328,45 +328,50 @@ append_summary() {
 }
 
 append_large_files() {
+
   local large_tsv="$1"
   local repo_name="$2"
   local project_path="$3"
   local repo_url="$4"
+  local repo_dir="$5"
 
   while IFS=$'\t' read -r blob_sha blob_size_mb file_path; do
-  [[ -z "${blob_sha:-}" ]] && continue
 
-branches="$(
-  git rev-list --all --objects |
-  awk -v sha="$blob_sha" '$1 == sha {print $2}' |
-  while read -r file; do
+    [[ -z "${blob_sha:-}" ]] && continue
 
-      git log --all --format='%H' -- "$file" 2>/dev/null |
-      while read -r commit; do
-          git branch -a --contains "$commit" 2>/dev/null
-      done
+    branches="$(
+      git -C "$repo_dir" for-each-ref --format='%(refname:short)' refs/heads refs/remotes |
+      while read -r branch; do
 
-  done |
-  sed 's/^[* ]*//' |
-  sort -u |
-  paste -sd "," -
-)" 
-  [[ -z "$branches" ]] && branches="<unknown>"
+        git -C "$repo_dir" ls-tree -r "$branch" 2>/dev/null |
+        awk -v sha="$blob_sha" -v branch="$branch" '
+          $3 == sha {
+            print branch
+            found=1
+          }
+        '
 
-  printf "  [WARN] %8.2f MB  %s  (blob: %s)  [branches: %s]\n" \
-    "$blob_size_mb" \
-    "$file_path" \
-    "$blob_sha" \
-    "$branches"
+      done |
+      sort -u |
+      paste -sd "," -
+    )" || true
 
-  emit_github_warning \
-    "$repo_name" \
-    "$project_path" \
-    "$blob_size_mb" \
-    "$file_path" \
-    "$blob_sha"
+    [[ -z "$branches" ]] && branches="<unknown>"
 
-done < "$large_tsv"
+    printf "  [WARN] %8.2f MB  %s  (blob: %s)  [branches: %s]\n" \
+      "$blob_size_mb" \
+      "$file_path" \
+      "$blob_sha" \
+      "$branches"
+
+    emit_github_warning \
+      "$repo_name" \
+      "$project_path" \
+      "$blob_size_mb" \
+      "$file_path" \
+      "$blob_sha"
+
+  done < "$large_tsv"
 }
 # ------------------------------------------------------------
 # GitHub Actions warning annotation
@@ -551,10 +556,11 @@ run_checks() {
       echo "[WARNING] These files must be reviewed before migration since GitHub does not support files above ${THRESHOLD_MB} MB."
 
       append_large_files \
-        "$large_tsv" \
-        "$repo_name" \
-        "$project_path" \
-        "$repo_url"
+      "$large_tsv" \
+      "$repo_name" \
+      "$project_path" \
+      "$repo_url" \
+      "$repo_dir"
 
       append_summary \
         "$repo_name" \
